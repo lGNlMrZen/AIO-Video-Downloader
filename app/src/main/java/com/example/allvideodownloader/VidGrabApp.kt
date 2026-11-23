@@ -260,7 +260,6 @@ fun HomeScreen(
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Hero Card: Input URL + Paste + Cek Video
         item {
             Card(
                 shape = RoundedCornerShape(24.dp),
@@ -297,7 +296,6 @@ fun HomeScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Editable Input Field Pill
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = colors.surfaceSubtle,
@@ -375,11 +373,8 @@ fun HomeScreen(
             }
         }
 
-        // State Dynamic Content
         when (val state = uiState) {
-            is DownloadUiState.Idle -> {
-                // Siap menerima input
-            }
+            is DownloadUiState.Idle -> {}
 
             is DownloadUiState.FetchingInfo -> {
                 item {
@@ -409,7 +404,6 @@ fun HomeScreen(
                 val details = state.details
                 val platformInfo = detectPlatform(details.url)
 
-                // Metadata Preview Card
                 item {
                     Card(
                         shape = RoundedCornerShape(20.dp),
@@ -487,7 +481,6 @@ fun HomeScreen(
                     }
                 }
 
-                // Header Pilih Kualitas & Opsi Lanjutan
                 item {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -503,7 +496,6 @@ fun HomeScreen(
                     }
                 }
 
-                // Grid 2x2 Quality Cards
                 item {
                     val formats = details.formats
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -530,7 +522,6 @@ fun HomeScreen(
                     }
                 }
 
-                // Action Buttons: Cancel & Download
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Button(
@@ -679,7 +670,6 @@ fun HomeScreen(
             }
         }
 
-        // Storage Directory Path Indicator
         item {
             Row(
                 modifier = Modifier
@@ -935,6 +925,7 @@ fun AccountSettingsScreen(
     onOpenDonate: () -> Unit
 ) {
     val colors = LocalAppColors.current
+    val updateStatus by viewModel.engineUpdateStatus.collectAsState()
 
     LazyColumn(
         modifier = Modifier
@@ -1050,40 +1041,6 @@ fun AccountSettingsScreen(
         }
 
         item {
-            Text("TENTANG APLIKASI", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.textSecondary)
-            Spacer(modifier = Modifier.height(8.dp))
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = colors.surface),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, colors.border, RoundedCornerShape(16.dp))
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Versi Aplikasi", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
-                        Surface(shape = RoundedCornerShape(8.dp), color = colors.surfaceSubtle) {
-                            Text(
-                                text = "v1.0.0 (yt-dlp Native)",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.textSecondary,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-        item {
-            val updateStatus by viewModel.engineUpdateStatus.collectAsState()
             Text("TENTANG APLIKASI & ENGINE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.textSecondary)
             Spacer(modifier = Modifier.height(8.dp))
             Card(
@@ -1116,9 +1073,30 @@ fun AccountSettingsScreen(
                             Text("Update", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = colors.border)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Versi Aplikasi", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
+                        Surface(shape = RoundedCornerShape(8.dp), color = colors.surfaceSubtle) {
+                            Text(
+                                text = "v1.0.0 (yt-dlp Native)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textSecondary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
+    }
+}
 
 @Composable
 fun AlertsScreen(viewModel: DownloaderViewModel) {
