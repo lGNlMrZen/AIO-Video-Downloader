@@ -155,6 +155,22 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
         _uiState.value = DownloadUiState.Idle
     }
 
+        private val _engineUpdateStatus = MutableStateFlow<String?>(null)
+    val engineUpdateStatus: StateFlow<String?> = _engineUpdateStatus.asStateFlow()
+
+    fun getEngineVersion(): String = repository.getEngineVersion()
+
+    fun updateYtDlpEngine() {
+        viewModelScope.launch {
+            _engineUpdateStatus.value = "Mengunduh pembaruan yt-dlp..."
+            val res = repository.updateEngine()
+            res.fold(
+                onSuccess = { msg -> _engineUpdateStatus.value = msg },
+                onFailure = { err -> _engineUpdateStatus.value = "Gagal: ${err.message}" }
+            )
+        }
+    }
+
     private fun addAlert(title: String, message: String, isError: Boolean = false) {
         _alerts.value = listOf(AppNotificationItem(title = title, message = message, isError = isError)) + _alerts.value
     }
