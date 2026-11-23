@@ -13,6 +13,8 @@
         android:name=".DownloaderApp"
         android:allowBackup="true"
         android:extractNativeLibs="true"
+        android:icon="@drawable/ic_launcher"
+        android:roundIcon="@drawable/ic_launcher"
         android:label="VidGrab"
         android:requestLegacyExternalStorage="true"
         android:theme="@style/Theme.VidGrab">
@@ -25,7 +27,8 @@
             <!-- Launcher Utama -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.CATEGORY_LAUNCHER" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
             <!-- Menangkap Share Link dari Aplikasi Lain (YT, TikTok, IG, FB) -->
