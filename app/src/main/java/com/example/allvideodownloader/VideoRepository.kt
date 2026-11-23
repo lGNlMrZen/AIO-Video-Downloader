@@ -29,11 +29,33 @@ data class RealDownloadedFile(
 
 class VideoRepository(private val context: Context) {
 
+    private val browserUserAgent =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+    suspend fun updateEngine(): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val status = YoutubeDL.getInstance().updateYoutubeDL(
+                context,
+                YoutubeDL.UpdateChannel._STABLE
+            )
+            val version = YoutubeDL.getInstance().version(context) ?: "Terbaru"
+            Result.success("Status: ${status?.name ?: "OK"} (Versi: $version)")
+        } catch (e: Exception) {
+            Result.failure(Exception(e.localizedMessage ?: "Gagal memperbarui engine yt-dlp"))
+        }
+    }
+
+    fun getEngineVersion(): String {
+        return YoutubeDL.getInstance().version(context) ?: "Built-in"
+    }
+
     suspend fun fetchVideoInfo(url: String): Result<VideoDetails> = withContext(Dispatchers.IO) {
         try {
             val request = YoutubeDLRequest(url).apply {
                 addOption("--no-playlist")
                 addOption("--no-check-certificates")
+                addOption("--user-agent", browserUserAgent)
+                addOption("--add-header", "Accept-Language: en-US,en;q=0.9")
             }
 
             val info = YoutubeDL.getInstance().getInfo(request)
@@ -70,7 +92,7 @@ class VideoRepository(private val context: Context) {
 
             Result.success(details)
         } catch (e: Exception) {
-            Result.failure(Exception(e.localizedMessage ?: "Gagal mengambil metadata video. Pastikan link publik & valid."))
+            Result.failure(Exception(e.localizedMessage ?: "Gagal mengambil metadata video. Pastikan video bersifat publik."))
         }
     }
 
@@ -100,6 +122,7 @@ class VideoRepository(private val context: Context) {
                 addOption("-o", outputTemplate)
                 addOption("--no-playlist")
                 addOption("--no-mtime")
+                addOption("--user-agent", browserUserAgent)
 
                 if (!selectedFormat.isAudioOnly) {
                     addOption("--merge-output-format", "mp4")
