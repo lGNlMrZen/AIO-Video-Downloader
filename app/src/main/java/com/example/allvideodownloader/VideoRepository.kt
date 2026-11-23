@@ -8,11 +8,27 @@ import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
+
+data class AdvancedDownloadOptions(
+    val codec: String = "H.264",
+    val audioBitrate: String = "320 kbps",
+    val includeSubtitles: Boolean = false,
+    val wifiOnly: Boolean = false
+)
+
+data class RealDownloadedFile(
+    val file: File,
+    val title: String,
+    val format: String,
+    val sizeText: String,
+    val dateText: String
+)
 
 class VideoRepository(private val context: Context) {
 
-    // Mengambil judul, thumbnail, dan opsi format dari URL (YT, IG, TikTok, FB)
     suspend fun fetchVideoInfo(url: String): Result<VideoDetails> = withContext(Dispatchers.IO) {
         try {
             val request = YoutubeDLRequest(url).apply {
@@ -23,22 +39,21 @@ class VideoRepository(private val context: Context) {
             val info = YoutubeDL.getInstance().getInfo(request)
             val durationFormatted = formatDuration(info.duration)
 
-            // Opsi format universal yang kompatibel untuk YT, TikTok, IG, & FB
             val formatOptions = listOf(
                 VideoFormatOption(
-                    label = "Best Quality (Auto / 1080p+ MP4)",
+                    label = "1080p FHD",
                     formatSelector = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
                 ),
                 VideoFormatOption(
-                    label = "HD 720p (MP4)",
+                    label = "720p HD",
                     formatSelector = "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]"
                 ),
                 VideoFormatOption(
-                    label = "SD 480p (Hemat Kuota)",
+                    label = "480p SD",
                     formatSelector = "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best[height<=480]"
                 ),
                 VideoFormatOption(
-                    label = "Audio Only (M4A)",
+                    label = "Audio M4A",
                     formatSelector = "bestaudio[ext=m4a]/bestaudio",
                     isAudioOnly = true
                 )
@@ -55,34 +70,28 @@ class VideoRepository(private val context: Context) {
 
             Result.success(details)
         } catch (e: Exception) {
-            Result.failure(Exception(e.localizedMessage ?: "Gagal mengambil informasi video. Pastikan link valid dan publik."))
+            Result.failure(Exception(e.localizedMessage ?: "Gagal mengambil metadata video. Pastikan link publik & valid."))
         }
     }
 
-    // Mengeksekusi download & menyimpannya ke folder publik Movies/Downloads
     suspend fun downloadVideo(
         details: VideoDetails,
         selectedFormat: VideoFormatOption,
+        storageSubPath: String,
+        advancedOptions: AdvancedDownloadOptions,
         onProgress: (progress: Float, eta: Long, line: String) -> Unit
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val baseDir = if (selectedFormat.isAudioOnly) {
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
-            } else {
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-            }
-
-            val outputDir = File(baseDir, "AllVideoDownloader")
+            val outputDir = resolveStorageDirectory(storageSubPath)
             if (!outputDir.exists()) {
                 outputDir.mkdirs()
             }
 
-            // Sanitasi nama file agar aman dari karakter ilegal
             val safeTitle = details.title
                 .replace(Regex("[^a-zA-Z0-9\\s-_]"), "")
                 .trim()
                 .take(50)
-                .ifEmpty { "video_${System.currentTimeMillis()}" }
+                .ifEmpty { "VidGrab_${System.currentTimeMillis()}" }
 
             val outputTemplate = File(outputDir, "$safeTitle.%(ext)s").absolutePath
 
@@ -91,8 +100,15 @@ class VideoRepository(private val context: Context) {
                 addOption("-o", outputTemplate)
                 addOption("--no-playlist")
                 addOption("--no-mtime")
+
                 if (!selectedFormat.isAudioOnly) {
                     addOption("--merge-output-format", "mp4")
+                }
+
+                if (advancedOptions.includeSubtitles) {
+                    addOption("--write-subs")
+                    addOption("--sub-langs", "id,en")
+                    addOption("--convert-subs", "srt")
                 }
             }
 
@@ -100,14 +116,12 @@ class VideoRepository(private val context: Context) {
                 onProgress(progress, etaInSeconds, line)
             }
 
-            // Cari file hasil unduhan terbaru di folder tersebut untuk di-scan ke Galeri
             val downloadedFile = outputDir.listFiles()
-                ?.filter { it.name.startsWith(safeTitle) }
+                ?.filter { it.name.startsWith(safeTitle) && !it.name.endsWith(".srt") }
                 ?.maxByOrNull { it.lastModified() }
 
             val finalPath = downloadedFile?.absolutePath ?: outputDir.absolutePath
 
-            // Trigger MediaScanner agar video langsung muncul di Galeri Android
             downloadedFile?.let { file ->
                 MediaScannerConnection.scanFile(
                     context,
@@ -119,7 +133,37 @@ class VideoRepository(private val context: Context) {
 
             Result.success(finalPath)
         } catch (e: Exception) {
-            Result.failure(Exception(e.localizedMessage ?: "Terjadi kesalahan saat mengunduh video."))
+            Result.failure(Exception(e.localizedMessage ?: "Proses unduhan gagal."))
+        }
+    }
+
+    fun getDownloadedFiles(storageSubPath: String): List<RealDownloadedFile> {
+        val dir = resolveStorageDirectory(storageSubPath)
+        if (!dir.exists()) return emptyList()
+
+        val sdf = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
+        return dir.listFiles()
+            ?.filter { it.isFile && (it.extension.equals("mp4", true) || it.extension.equals("m4a", true) || it.extension.equals("mp3", true)) }
+            ?.sortedByDescending { it.lastModified() }
+            ?.map { file ->
+                val sizeMb = file.length() / (1024.0 * 1024.0)
+                RealDownloadedFile(
+                    file = file,
+                    title = file.nameWithoutExtension,
+                    format = file.extension.uppercase(Locale.US),
+                    sizeText = String.format(Locale.US, "%.1f MB", sizeMb),
+                    dateText = sdf.format(Date(file.lastModified()))
+                )
+            } ?: emptyList()
+    }
+
+    private fun resolveStorageDirectory(subPath: String): File {
+        val cleanPath = subPath.trim('/')
+        val root = Environment.getExternalStorageDirectory()
+        return if (cleanPath.startsWith("storage/emulated/0")) {
+            File("/$cleanPath")
+        } else {
+            File(root, cleanPath)
         }
     }
 
