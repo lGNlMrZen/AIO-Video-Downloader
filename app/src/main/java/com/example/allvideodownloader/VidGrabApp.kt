@@ -1082,6 +1082,44 @@ fun AccountSettingsScreen(
     }
 }
 
+        item {
+            val updateStatus by viewModel.engineUpdateStatus.collectAsState()
+            Text("TENTANG APLIKASI & ENGINE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.textSecondary)
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, colors.border, RoundedCornerShape(16.dp))
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Core Engine (yt-dlp)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
+                            Text(
+                                text = updateStatus ?: "Versi: ${viewModel.getEngineVersion()}",
+                                fontSize = 11.sp,
+                                color = colors.textSecondary
+                            )
+                        }
+                        Button(
+                            onClick = { viewModel.updateYtDlpEngine() },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text("Update", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                }
+            }
+        }
+
 @Composable
 fun AlertsScreen(viewModel: DownloaderViewModel) {
     val colors = LocalAppColors.current
