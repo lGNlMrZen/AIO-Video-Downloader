@@ -25,8 +25,14 @@ class DownloaderApp : Application() {
                 YoutubeDL.getInstance().init(this@DownloaderApp)
                 FFmpeg.getInstance().init(this@DownloaderApp)
                 Log.d("DownloaderApp", "YoutubeDL & FFmpeg berhasil diinisialisasi")
+
+                // Otomatis perbarui engine yt-dlp ke versi terbaru di background
+                YoutubeDL.getInstance().updateYoutubeDL(
+                    this@DownloaderApp,
+                    YoutubeDL.UpdateChannel._STABLE
+                )
             } catch (e: YoutubeDLException) {
-                Log.e("DownloaderApp", "Gagal inisialisasi library", e)
+                Log.e("DownloaderApp", "Gagal inisialisasi/update library", e)
             }
         }
     }
