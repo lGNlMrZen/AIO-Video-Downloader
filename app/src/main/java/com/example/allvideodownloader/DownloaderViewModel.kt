@@ -42,6 +42,9 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
     private val _alerts = MutableStateFlow<List<AppNotificationItem>>(emptyList())
     val alerts: StateFlow<List<AppNotificationItem>> = _alerts.asStateFlow()
 
+    private val _engineUpdateStatus = MutableStateFlow<String?>(null)
+    val engineUpdateStatus: StateFlow<String?> = _engineUpdateStatus.asStateFlow()
+
     init {
         refreshFilesList()
     }
@@ -68,6 +71,26 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
         if (file.exists()) {
             file.delete()
             refreshFilesList()
+        }
+    }
+
+    fun getEngineVersion(): String = repository.getEngineVersion()
+
+    fun updateYtDlpEngine() {
+        viewModelScope.launch {
+            _engineUpdateStatus.value = "Mengunduh pembaruan yt-dlp..."
+            val res = repository.updateEngine()
+            res.fold(
+                onSuccess = { msg ->
+                    _engineUpdateStatus.value = msg
+                    addAlert("Engine Diperbarui", msg)
+                },
+                onFailure = { err ->
+                    val errMsg = err.message ?: "Gagal update"
+                    _engineUpdateStatus.value = "Gagal: $errMsg"
+                    addAlert("Gagal Update Engine", errMsg, isError = true)
+                }
+            )
         }
     }
 
@@ -153,22 +176,6 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
 
     fun resetState() {
         _uiState.value = DownloadUiState.Idle
-    }
-
-        private val _engineUpdateStatus = MutableStateFlow<String?>(null)
-    val engineUpdateStatus: StateFlow<String?> = _engineUpdateStatus.asStateFlow()
-
-    fun getEngineVersion(): String = repository.getEngineVersion()
-
-    fun updateYtDlpEngine() {
-        viewModelScope.launch {
-            _engineUpdateStatus.value = "Mengunduh pembaruan yt-dlp..."
-            val res = repository.updateEngine()
-            res.fold(
-                onSuccess = { msg -> _engineUpdateStatus.value = msg },
-                onFailure = { err -> _engineUpdateStatus.value = "Gagal: ${err.message}" }
-            )
-        }
     }
 
     private fun addAlert(title: String, message: String, isError: Boolean = false) {
