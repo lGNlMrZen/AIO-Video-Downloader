@@ -13,8 +13,8 @@
         android:name=".DownloaderApp"
         android:allowBackup="true"
         android:extractNativeLibs="true"
-        android:icon="@drawable/ic_launcher_vidgrab"
-        android:roundIcon="@drawable/ic_launcher_vidgrab"
+        android:icon="@drawable/ic_launcher_adaptive"
+        android:roundIcon="@drawable/ic_launcher_adaptive"
         android:label="VidGrab"
         android:requestLegacyExternalStorage="true"
         android:theme="@style/Theme.VidGrab">
