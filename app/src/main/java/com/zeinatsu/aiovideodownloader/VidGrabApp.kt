@@ -2,6 +2,7 @@ package com.zeinatsu.aiovideodownloader
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -28,6 +29,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -1338,14 +1340,66 @@ fun AdvancedFormatOptionsModal(
 
 @Composable
 fun DonateDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+
+    // Ganti dengan link Saweria / Trakteer kamu
+    val donateUrl = "https://saweria.co/zeinatsu"
+    // Ganti dengan nomor DANA kamu
+    val danaNumber = "082258498837"
+
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Filled.Favorite, contentDescription = null, tint = Color(0xFFE11D48)) },
         title = { Text("Dukung Developer VidGrab", fontWeight = FontWeight.Bold) },
-        text = { Text("Terima kasih telah menggunakan VidGrab! Dukungan Anda membantu pengembangan fitur baru terus berjalan.") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Terima kasih telah menggunakan VidGrab! Dukungan Anda membantu pengembangan aplikasi agar tetap gratis & tanpa iklan.",
+                    fontSize = 13.sp
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF008CEB).copy(alpha = 0.1f),
+                    border = BorderStroke(1.dp, Color(0xFF008CEB).copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Transfer Langsung DANA", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF008CEB))
+                            Text(danaNumber, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                        TextButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(danaNumber))
+                                Toast.makeText(context, "Nomor DANA disalin!", Toast.LENGTH_SHORT).show()
+                            }
+                        ) {
+                            Text("Salin", fontWeight = FontWeight.Bold, color = Color(0xFF008CEB))
+                        }
+                    }
+                }
+            }
+        },
         confirmButton = {
-            Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE11D48))) {
-                Text("Traktir Kopi", color = Color.White)
+            Button(
+                onClick = {
+                    try {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(donateUrl))
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Tidak dapat membuka browser", Toast.LENGTH_SHORT).show()
+                    }
+                    onDismiss()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE11D48))
+            ) {
+                Text("Via Saweria / QRIS", color = Color.White)
             }
         },
         dismissButton = {
