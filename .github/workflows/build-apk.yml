@@ -27,11 +27,11 @@ jobs:
       - name: Accept Android SDK Licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Build Debug APK
-        run: gradle assembleDebug --stacktrace
+      - name: Build Optimized Release APK
+        run: gradle assembleRelease --stacktrace
 
       - name: Upload VidGrab APK
         uses: actions/upload-artifact@v4
         with:
-          name: VidGrab-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: VidGrab-APK-Optimized
+          path: app/build/outputs/apk/release/app-release.apk
