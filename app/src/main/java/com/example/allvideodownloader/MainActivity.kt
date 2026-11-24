@@ -1,4 +1,4 @@
-package com.example.allvideodownloader
+package com.zeinatsu.aiovideodownloader
 
 import android.Manifest
 import android.content.Intent
