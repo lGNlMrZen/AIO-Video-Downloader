@@ -29,6 +29,10 @@ data class RealDownloadedFile(
 
 class VideoRepository(private val context: Context) {
 
+    companion object {
+        const val DOWNLOAD_PROCESS_ID = "vidgrab_active_dl"
+    }
+
     private val browserUserAgent =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
@@ -122,6 +126,7 @@ class VideoRepository(private val context: Context) {
                 addOption("-o", outputTemplate)
                 addOption("--no-playlist")
                 addOption("--no-mtime")
+                addOption("--continue") // Menyambung unduhan dari file .part saat di-Resume
                 addOption("--user-agent", browserUserAgent)
 
                 if (!selectedFormat.isAudioOnly) {
@@ -135,12 +140,13 @@ class VideoRepository(private val context: Context) {
                 }
             }
 
-            YoutubeDL.getInstance().execute(request) { progress, etaInSeconds, line ->
+            // Wajib sertakan processId agar bisa di-Pause / Cancel secara instan
+            YoutubeDL.getInstance().execute(request, DOWNLOAD_PROCESS_ID) { progress, etaInSeconds, line ->
                 onProgress(progress, etaInSeconds, line)
             }
 
             val downloadedFile = outputDir.listFiles()
-                ?.filter { it.name.startsWith(safeTitle) && !it.name.endsWith(".srt") }
+                ?.filter { it.name.startsWith(safeTitle) && !it.name.endsWith(".srt") && !it.name.endsWith(".part") }
                 ?.maxByOrNull { it.lastModified() }
 
             val finalPath = downloadedFile?.absolutePath ?: outputDir.absolutePath
@@ -156,7 +162,22 @@ class VideoRepository(private val context: Context) {
 
             Result.success(finalPath)
         } catch (e: Exception) {
-            Result.failure(Exception(e.localizedMessage ?: "Proses unduhan gagal."))
+            Result.failure(Exception(e.localizedMessage ?: "Proses unduhan dihentikan."))
+        }
+    }
+
+    fun cleanupTempFiles(storageSubPath: String, videoTitle: String) {
+        val dir = resolveStorageDirectory(storageSubPath)
+        if (!dir.exists()) return
+        val safeTitle = videoTitle
+            .replace(Regex("[^a-zA-Z0-9\\s-_]"), "")
+            .trim()
+            .take(50)
+
+        dir.listFiles()?.forEach { file ->
+            if (file.name.startsWith(safeTitle) && (file.name.endsWith(".part") || file.name.endsWith(".ytdl"))) {
+                file.delete()
+            }
         }
     }
 
