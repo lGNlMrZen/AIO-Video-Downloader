@@ -7,6 +7,7 @@ import android.net.NetworkCapabilities
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.yausername.youtubedl_android.YoutubeDL
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,6 +24,9 @@ data class AppNotificationItem(
 class DownloaderViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = VideoRepository(application.applicationContext)
+    private var downloadJob: Job? = null
+    private var isUserPaused = false
+    private var isUserCancelled = false
 
     private val _urlInput = MutableStateFlow("")
     val urlInput: StateFlow<String> = _urlInput.asStateFlow()
@@ -126,18 +130,24 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun startDownload(details: VideoDetails, format: VideoFormatOption) {
+    fun startDownload(details: VideoDetails, format: VideoFormatOption, initialProgress: Float = 0f) {
         if (_advancedOptions.value.wifiOnly && !isConnectedToWifi()) {
             _uiState.value = DownloadUiState.Error("Mode 'Hanya Wi-Fi' aktif. Hubungkan ke Wi-Fi atau matikan pengaturan di tab Account.")
             return
         }
 
-        viewModelScope.launch {
+        isUserPaused = false
+        isUserCancelled = false
+        downloadJob?.cancel()
+
+        downloadJob = viewModelScope.launch {
             _uiState.value = DownloadUiState.Downloading(
                 details = details,
-                progress = 0f,
+                selectedFormat = format,
+                progress = initialProgress,
                 etaSeconds = 0L,
-                statusLine = "Memulai unduhan..."
+                statusLine = if (initialProgress > 0f) "Melanjutkan unduhan..." else "Memulai unduhan...",
+                isPaused = false
             )
 
             val result = repository.downloadVideo(
@@ -146,13 +156,21 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
                 storageSubPath = _storagePath.value,
                 advancedOptions = _advancedOptions.value
             ) { progress, eta, line ->
-                _uiState.value = DownloadUiState.Downloading(
-                    details = details,
-                    progress = progress.coerceIn(0f, 100f),
-                    etaSeconds = eta,
-                    statusLine = line
-                )
+                if (!isUserPaused && !isUserCancelled) {
+                    val safeProgress = if (progress > 0f) progress else initialProgress
+                    _uiState.value = DownloadUiState.Downloading(
+                        details = details,
+                        selectedFormat = format,
+                        progress = safeProgress.coerceIn(0f, 100f),
+                        etaSeconds = eta,
+                        statusLine = line,
+                        isPaused = false
+                    )
+                }
             }
+
+            // Abaikan error dari yt-dlp jika berhenti karena tombol Pause atau Cancel
+            if (isUserPaused || isUserCancelled) return@launch
 
             result.fold(
                 onSuccess = { savedPath ->
@@ -169,9 +187,40 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun pauseCurrentDownload() {
+        val currentState = _uiState.value as? DownloadUiState.Downloading ?: return
+        isUserPaused = true
+        YoutubeDL.getInstance().destroyProcessById(VideoRepository.DOWNLOAD_PROCESS_ID)
+        downloadJob?.cancel()
+
+        _uiState.value = currentState.copy(
+            isPaused = true,
+            statusLine = "Unduhan dijeda (${currentState.progress.toInt()}%)"
+        )
+    }
+
+    fun resumeCurrentDownload() {
+        val currentState = _uiState.value as? DownloadUiState.Downloading ?: return
+        startDownload(
+            details = currentState.details,
+            format = currentState.selectedFormat,
+            initialProgress = currentState.progress
+        )
+    }
+
     fun cancelCurrentDownload() {
-        YoutubeDL.getInstance().destroyProcessById("default")
-        _uiState.value = DownloadUiState.Idle
+        val currentState = _uiState.value as? DownloadUiState.Downloading
+        isUserCancelled = true
+        isUserPaused = false
+        YoutubeDL.getInstance().destroyProcessById(VideoRepository.DOWNLOAD_PROCESS_ID)
+        downloadJob?.cancel()
+
+        currentState?.let {
+            repository.cleanupTempFiles(_storagePath.value, it.details.title)
+            _uiState.value = DownloadUiState.InfoReady(it.details)
+        } ?: run {
+            _uiState.value = DownloadUiState.Idle
+        }
     }
 
     fun resetState() {
