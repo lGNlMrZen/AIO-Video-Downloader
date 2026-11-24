@@ -1,4 +1,4 @@
-package com.example.allvideodownloader
+package com.zeinatsu.aiovideodownloader
 
 data class VideoFormatOption(
     val label: String,       // Contoh: "1080p (MP4)", "720p (MP4)", "Audio Only (M4A/MP3)"
