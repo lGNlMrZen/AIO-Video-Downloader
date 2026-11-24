@@ -1,4 +1,4 @@
-package com.example.allvideodownloader
+package com.zeinatsu.aiovideodownloader
 
 import android.app.Application
 import android.util.Log
