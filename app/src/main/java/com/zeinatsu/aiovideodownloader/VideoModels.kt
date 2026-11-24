@@ -1,7 +1,7 @@
 package com.zeinatsu.aiovideodownloader
 
 data class VideoFormatOption(
-    val label: String,       // Contoh: "1080p (MP4)", "720p (MP4)", "Audio Only (M4A/MP3)"
+    val label: String,
     val formatSelector: String,
     val isAudioOnly: Boolean = false
 )
@@ -21,9 +21,11 @@ sealed class DownloadUiState {
     data class InfoReady(val details: VideoDetails) : DownloadUiState()
     data class Downloading(
         val details: VideoDetails,
+        val selectedFormat: VideoFormatOption,
         val progress: Float,
         val etaSeconds: Long,
-        val statusLine: String
+        val statusLine: String,
+        val isPaused: Boolean = false
     ) : DownloadUiState()
     data class Success(val filePath: String) : DownloadUiState()
     data class Error(val message: String) : DownloadUiState()
