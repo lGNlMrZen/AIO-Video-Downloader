@@ -160,7 +160,6 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
             ) { progress, eta, line ->
                 if (!isUserPaused && !isUserCancelled) {
                     val now = System.currentTimeMillis()
-                    // Batasi refresh UI maksimal ~3x per detik (350ms) agar hemat baterai & bebas lag
                     if (now - lastUiUpdateTime >= 350L || progress >= 99f) {
                         lastUiUpdateTime = now
                         val safeProgress = if (progress > 0f) progress else initialProgress
@@ -176,24 +175,6 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
                 }
             }
 
-            if (isUserPaused || isUserCancelled) return@launch
-
-            result.fold(
-                onSuccess = { savedPath ->
-                    _uiState.value = DownloadUiState.Success(savedPath)
-                    refreshFilesList()
-                    addAlert("Unduhan Selesai", "${details.title} (${format.label}) berhasil disimpan.")
-                },
-                onFailure = { error ->
-                    val msg = error.message ?: "Unduhan terhenti"
-                    _uiState.value = DownloadUiState.Error(msg)
-                    addAlert("Unduhan Gagal", msg, isError = true)
-                }
-            )
-        }
-    }
-
-            // Abaikan error dari yt-dlp jika berhenti karena tombol Pause atau Cancel
             if (isUserPaused || isUserCancelled) return@launch
 
             result.fold(
