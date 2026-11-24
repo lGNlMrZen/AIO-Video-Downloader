@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.allvideodownloader"
+    namespace = "com.zeinatsu.aiovideodownloader"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.allvideodownloader"
+        applicationId = "com.zeinatsu.aiovideodownloader"
         minSdk = 24
         targetSdk = 35
         versionCode = 1
