@@ -150,6 +150,8 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
                 isPaused = false
             )
 
+            var lastUiUpdateTime = 0L
+
             val result = repository.downloadVideo(
                 details = details,
                 selectedFormat = format,
@@ -157,17 +159,39 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
                 advancedOptions = _advancedOptions.value
             ) { progress, eta, line ->
                 if (!isUserPaused && !isUserCancelled) {
-                    val safeProgress = if (progress > 0f) progress else initialProgress
-                    _uiState.value = DownloadUiState.Downloading(
-                        details = details,
-                        selectedFormat = format,
-                        progress = safeProgress.coerceIn(0f, 100f),
-                        etaSeconds = eta,
-                        statusLine = line,
-                        isPaused = false
-                    )
+                    val now = System.currentTimeMillis()
+                    // Batasi refresh UI maksimal ~3x per detik (350ms) agar hemat baterai & bebas lag
+                    if (now - lastUiUpdateTime >= 350L || progress >= 99f) {
+                        lastUiUpdateTime = now
+                        val safeProgress = if (progress > 0f) progress else initialProgress
+                        _uiState.value = DownloadUiState.Downloading(
+                            details = details,
+                            selectedFormat = format,
+                            progress = safeProgress.coerceIn(0f, 100f),
+                            etaSeconds = eta,
+                            statusLine = line,
+                            isPaused = false
+                        )
+                    }
                 }
             }
+
+            if (isUserPaused || isUserCancelled) return@launch
+
+            result.fold(
+                onSuccess = { savedPath ->
+                    _uiState.value = DownloadUiState.Success(savedPath)
+                    refreshFilesList()
+                    addAlert("Unduhan Selesai", "${details.title} (${format.label}) berhasil disimpan.")
+                },
+                onFailure = { error ->
+                    val msg = error.message ?: "Unduhan terhenti"
+                    _uiState.value = DownloadUiState.Error(msg)
+                    addAlert("Unduhan Gagal", msg, isError = true)
+                }
+            )
+        }
+    }
 
             // Abaikan error dari yt-dlp jika berhenti karena tombol Pause atau Cancel
             if (isUserPaused || isUserCancelled) return@launch
