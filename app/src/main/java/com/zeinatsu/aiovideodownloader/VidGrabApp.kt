@@ -574,10 +574,15 @@ fun HomeScreen(
                                     modifier = Modifier
                                         .size(44.dp)
                                         .clip(RoundedCornerShape(12.dp))
-                                        .background(Color(0xFFDBEAFE)),
+                                        .background(if (state.isPaused) WarningAmber.copy(alpha = 0.15f) else Color(0xFFDBEAFE)),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(Icons.Filled.Videocam, contentDescription = null, tint = PrimaryBlue, modifier = Modifier.size(22.dp))
+                                    Icon(
+                                        imageVector = if (state.isPaused) Icons.Filled.Pause else Icons.Filled.Videocam,
+                                        contentDescription = null,
+                                        tint = if (state.isPaused) WarningAmber else PrimaryBlue,
+                                        modifier = Modifier.size(22.dp)
+                                    )
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
@@ -590,17 +595,16 @@ fun HomeScreen(
                                         color = colors.textPrimary
                                     )
                                     Row {
-                                        Text("${state.progress.toInt()}% • ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = PrimaryBlue)
-                                        if (state.etaSeconds > 0) {
+                                        Text(
+                                            text = if (state.isPaused) "Dijeda • ${state.progress.toInt()}%" else "${state.progress.toInt()}% • ",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (state.isPaused) WarningAmber else PrimaryBlue
+                                        )
+                                        if (!state.isPaused && state.etaSeconds > 0) {
                                             Text("${state.etaSeconds} sec left", fontSize = 12.sp, color = colors.textSecondary)
                                         }
                                     }
-                                }
-                                IconButton(
-                                    onClick = { viewModel.cancelCurrentDownload() },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(Icons.Filled.Close, contentDescription = "Cancel", tint = colors.textSecondary, modifier = Modifier.size(18.dp))
                                 }
                             }
 
@@ -612,7 +616,7 @@ fun HomeScreen(
                                     .fillMaxWidth()
                                     .height(6.dp)
                                     .clip(RoundedCornerShape(3.dp)),
-                                color = PrimaryBlue,
+                                color = if (state.isPaused) WarningAmber else PrimaryBlue,
                                 trackColor = colors.surfaceSubtle
                             )
 
@@ -624,6 +628,54 @@ fun HomeScreen(
                                 overflow = TextOverflow.Ellipsis,
                                 color = colors.textSecondary
                             )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { viewModel.cancelCurrentDownload() },
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.5f)),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(40.dp)
+                                ) {
+                                    Icon(Icons.Filled.Close, contentDescription = null, tint = DangerRed, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Batal", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DangerRed)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        if (state.isPaused) viewModel.resumeCurrentDownload()
+                                        else viewModel.pauseCurrentDownload()
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (state.isPaused) SuccessGreen else WarningAmber
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(40.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (state.isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (state.isPaused) "Lanjut" else "Jeda",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
                         }
                     }
                 }
