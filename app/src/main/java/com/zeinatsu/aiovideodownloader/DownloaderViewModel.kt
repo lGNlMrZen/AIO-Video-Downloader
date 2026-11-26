@@ -6,8 +6,6 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.yausername.youtubedl_android.YoutubeDL
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,15 +22,12 @@ data class AppNotificationItem(
 class DownloaderViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = VideoRepository(application.applicationContext)
-    private var downloadJob: Job? = null
-    private var isUserPaused = false
-    private var isUserCancelled = false
 
     private val _urlInput = MutableStateFlow("")
     val urlInput: StateFlow<String> = _urlInput.asStateFlow()
 
-    private val _uiState = MutableStateFlow<DownloadUiState>(DownloadUiState.Idle)
-    val uiState: StateFlow<DownloadUiState> = _uiState.asStateFlow()
+    val uiState: StateFlow<DownloadUiState> = DownloadStateHolder.uiState
+    val alerts: StateFlow<List<AppNotificationItem>> = DownloadStateHolder.alerts
 
     private val _storagePath = MutableStateFlow("/Download/VidGrab/")
     val storagePath: StateFlow<String> = _storagePath.asStateFlow()
@@ -43,14 +38,16 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
     private val _downloadedFiles = MutableStateFlow<List<RealDownloadedFile>>(emptyList())
     val downloadedFiles: StateFlow<List<RealDownloadedFile>> = _downloadedFiles.asStateFlow()
 
-    private val _alerts = MutableStateFlow<List<AppNotificationItem>>(emptyList())
-    val alerts: StateFlow<List<AppNotificationItem>> = _alerts.asStateFlow()
-
     private val _engineUpdateStatus = MutableStateFlow<String?>(null)
     val engineUpdateStatus: StateFlow<String?> = _engineUpdateStatus.asStateFlow()
 
     init {
         refreshFilesList()
+        viewModelScope.launch {
+            DownloadStateHolder.filesRefreshTick.collect {
+                refreshFilesList()
+            }
+        }
     }
 
     fun onUrlChanged(newUrl: String) {
@@ -71,11 +68,14 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
         _downloadedFiles.value = repository.getDownloadedFiles(_storagePath.value)
     }
 
-    fun deleteFile(file: File) {
-        if (file.exists()) {
-            file.delete()
-            refreshFilesList()
-        }
+    fun removeHistoryOnly(file: File) {
+        repository.hideFromHistoryOnly(file)
+        refreshFilesList()
+    }
+
+    fun deleteFileAndHistory(file: File) {
+        repository.deleteFileAndHistory(file)
+        refreshFilesList()
     }
 
     fun getEngineVersion(): String = repository.getEngineVersion()
@@ -87,12 +87,12 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
             res.fold(
                 onSuccess = { msg ->
                     _engineUpdateStatus.value = msg
-                    addAlert("Engine Diperbarui", msg)
+                    DownloadStateHolder.addAlert("Engine Diperbarui", msg)
                 },
                 onFailure = { err ->
                     val errMsg = err.message ?: "Gagal update"
                     _engineUpdateStatus.value = "Gagal: $errMsg"
-                    addAlert("Gagal Update Engine", errMsg, isError = true)
+                    DownloadStateHolder.addAlert("Gagal Update Engine", errMsg, isError = true)
                 }
             )
         }
@@ -110,21 +110,21 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
     fun analyzeUrl(url: String = _urlInput.value) {
         val cleanUrl = url.trim()
         if (cleanUrl.isEmpty()) {
-            _uiState.value = DownloadUiState.Error("Tempel tautan video terlebih dahulu.")
+            DownloadStateHolder.updateUiState(DownloadUiState.Error("Tempel tautan video terlebih dahulu."))
             return
         }
 
         viewModelScope.launch {
-            _uiState.value = DownloadUiState.FetchingInfo
+            DownloadStateHolder.updateUiState(DownloadUiState.FetchingInfo)
             val result = repository.fetchVideoInfo(cleanUrl)
             result.fold(
                 onSuccess = { details ->
-                    _uiState.value = DownloadUiState.InfoReady(details)
+                    DownloadStateHolder.updateUiState(DownloadUiState.InfoReady(details))
                 },
                 onFailure = { error ->
                     val msg = error.message ?: "Gagal menganalisis tautan"
-                    _uiState.value = DownloadUiState.Error(msg)
-                    addAlert("Gagal Ekstrak Link", msg, isError = true)
+                    DownloadStateHolder.updateUiState(DownloadUiState.Error(msg))
+                    DownloadStateHolder.addAlert("Gagal Ekstrak Link", msg, isError = true)
                 }
             )
         }
@@ -132,108 +132,36 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
 
     fun startDownload(details: VideoDetails, format: VideoFormatOption, initialProgress: Float = 0f) {
         if (_advancedOptions.value.wifiOnly && !isConnectedToWifi()) {
-            _uiState.value = DownloadUiState.Error("Mode 'Hanya Wi-Fi' aktif. Hubungkan ke Wi-Fi atau matikan pengaturan di tab Account.")
+            DownloadStateHolder.updateUiState(
+                DownloadUiState.Error("Mode 'Hanya Wi-Fi' aktif. Hubungkan ke Wi-Fi atau matikan pengaturan di tab Account.")
+            )
             return
         }
 
-        isUserPaused = false
-        isUserCancelled = false
-        downloadJob?.cancel()
+        DownloadStateHolder.activeSession = ActiveDownloadSession(
+            details = details,
+            selectedFormat = format,
+            storagePath = _storagePath.value,
+            advancedOptions = _advancedOptions.value
+        )
 
-        downloadJob = viewModelScope.launch {
-            _uiState.value = DownloadUiState.Downloading(
-                details = details,
-                selectedFormat = format,
-                progress = initialProgress,
-                etaSeconds = 0L,
-                statusLine = if (initialProgress > 0f) "Melanjutkan unduhan..." else "Memulai unduhan...",
-                isPaused = false
-            )
-
-            var lastUiUpdateTime = 0L
-
-            val result = repository.downloadVideo(
-                details = details,
-                selectedFormat = format,
-                storageSubPath = _storagePath.value,
-                advancedOptions = _advancedOptions.value
-            ) { progress, eta, line ->
-                if (!isUserPaused && !isUserCancelled) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastUiUpdateTime >= 350L || progress >= 99f) {
-                        lastUiUpdateTime = now
-                        val safeProgress = if (progress > 0f) progress else initialProgress
-                        _uiState.value = DownloadUiState.Downloading(
-                            details = details,
-                            selectedFormat = format,
-                            progress = safeProgress.coerceIn(0f, 100f),
-                            etaSeconds = eta,
-                            statusLine = line,
-                            isPaused = false
-                        )
-                    }
-                }
-            }
-
-            if (isUserPaused || isUserCancelled) return@launch
-
-            result.fold(
-                onSuccess = { savedPath ->
-                    _uiState.value = DownloadUiState.Success(savedPath)
-                    refreshFilesList()
-                    addAlert("Unduhan Selesai", "${details.title} (${format.label}) berhasil disimpan.")
-                },
-                onFailure = { error ->
-                    val msg = error.message ?: "Unduhan terhenti"
-                    _uiState.value = DownloadUiState.Error(msg)
-                    addAlert("Unduhan Gagal", msg, isError = true)
-                }
-            )
-        }
+        DownloadForegroundService.startDownload(getApplication(), initialProgress)
     }
 
     fun pauseCurrentDownload() {
-        val currentState = _uiState.value as? DownloadUiState.Downloading ?: return
-        isUserPaused = true
-        YoutubeDL.getInstance().destroyProcessById(VideoRepository.DOWNLOAD_PROCESS_ID)
-        downloadJob?.cancel()
-
-        _uiState.value = currentState.copy(
-            isPaused = true,
-            statusLine = "Unduhan dijeda (${currentState.progress.toInt()}%)"
-        )
+        DownloadForegroundService.sendAction(getApplication(), DownloadForegroundService.ACTION_PAUSE)
     }
 
     fun resumeCurrentDownload() {
-        val currentState = _uiState.value as? DownloadUiState.Downloading ?: return
-        startDownload(
-            details = currentState.details,
-            format = currentState.selectedFormat,
-            initialProgress = currentState.progress
-        )
+        DownloadForegroundService.sendAction(getApplication(), DownloadForegroundService.ACTION_RESUME)
     }
 
     fun cancelCurrentDownload() {
-        val currentState = _uiState.value as? DownloadUiState.Downloading
-        isUserCancelled = true
-        isUserPaused = false
-        YoutubeDL.getInstance().destroyProcessById(VideoRepository.DOWNLOAD_PROCESS_ID)
-        downloadJob?.cancel()
-
-        currentState?.let {
-            repository.cleanupTempFiles(_storagePath.value, it.details.title)
-            _uiState.value = DownloadUiState.InfoReady(it.details)
-        } ?: run {
-            _uiState.value = DownloadUiState.Idle
-        }
+        DownloadForegroundService.sendAction(getApplication(), DownloadForegroundService.ACTION_CANCEL)
     }
 
     fun resetState() {
-        _uiState.value = DownloadUiState.Idle
-    }
-
-    private fun addAlert(title: String, message: String, isError: Boolean = false) {
-        _alerts.value = listOf(AppNotificationItem(title = title, message = message, isError = isError)) + _alerts.value
+        DownloadStateHolder.updateUiState(DownloadUiState.Idle)
     }
 
     private fun isConnectedToWifi(): Boolean {
