@@ -31,6 +31,12 @@ class VideoRepository(private val context: Context) {
 
     companion object {
         const val DOWNLOAD_PROCESS_ID = "vidgrab_active_dl"
+        private const val PREFS_NAME = "vidgrab_history_prefs"
+        private const val KEY_HIDDEN_PATHS = "hidden_history_paths"
+    }
+
+    private val prefs by lazy {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
     private val browserUserAgent =
@@ -67,16 +73,24 @@ class VideoRepository(private val context: Context) {
 
             val formatOptions = listOf(
                 VideoFormatOption(
+                    label = "4K UHD",
+                    formatSelector = "bestvideo[height<=2160]+bestaudio/best[height<=2160]/best"
+                ),
+                VideoFormatOption(
+                    label = "2K QHD",
+                    formatSelector = "bestvideo[height<=1440]+bestaudio/best[height<=1440]/best"
+                ),
+                VideoFormatOption(
                     label = "1080p FHD",
-                    formatSelector = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+                    formatSelector = "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best"
                 ),
                 VideoFormatOption(
                     label = "720p HD",
-                    formatSelector = "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]"
+                    formatSelector = "bestvideo[height<=720]+bestaudio/best[height<=720]/best"
                 ),
                 VideoFormatOption(
                     label = "480p SD",
-                    formatSelector = "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best[height<=480]"
+                    formatSelector = "bestvideo[height<=480]+bestaudio/best[height<=480]/best"
                 ),
                 VideoFormatOption(
                     label = "Audio M4A",
@@ -121,12 +135,29 @@ class VideoRepository(private val context: Context) {
 
             val outputTemplate = File(outputDir, "$safeTitle.%(ext)s").absolutePath
 
+            val codecFilter = when (advancedOptions.codec) {
+                "AV1" -> "[vcodec^=av01]"
+                "VP9" -> "[vcodec^=vp9]"
+                "H.264" -> "[vcodec^=avc1]"
+                else -> ""
+            }
+
+            val finalFormatSelector = if (!selectedFormat.isAudioOnly && codecFilter.isNotEmpty()) {
+                val primaryWithCodec = selectedFormat.formatSelector.replace(
+                    "bestvideo",
+                    "bestvideo$codecFilter"
+                )
+                "$primaryWithCodec/${selectedFormat.formatSelector}"
+            } else {
+                selectedFormat.formatSelector
+            }
+
             val request = YoutubeDLRequest(details.url).apply {
-                addOption("-f", selectedFormat.formatSelector)
+                addOption("-f", finalFormatSelector)
                 addOption("-o", outputTemplate)
                 addOption("--no-playlist")
                 addOption("--no-mtime")
-                addOption("--continue") // Menyambung unduhan dari file .part saat di-Resume
+                addOption("--continue")
                 addOption("--user-agent", browserUserAgent)
 
                 if (!selectedFormat.isAudioOnly) {
@@ -140,7 +171,6 @@ class VideoRepository(private val context: Context) {
                 }
             }
 
-            // Wajib sertakan processId agar bisa di-Pause / Cancel secara instan
             YoutubeDL.getInstance().execute(request, DOWNLOAD_PROCESS_ID) { progress, etaInSeconds, line ->
                 onProgress(progress, etaInSeconds, line)
             }
@@ -152,6 +182,7 @@ class VideoRepository(private val context: Context) {
             val finalPath = downloadedFile?.absolutePath ?: outputDir.absolutePath
 
             downloadedFile?.let { file ->
+                unhideHistoryPath(file.absolutePath)
                 MediaScannerConnection.scanFile(
                     context,
                     arrayOf(file.absolutePath),
@@ -163,6 +194,28 @@ class VideoRepository(private val context: Context) {
             Result.success(finalPath)
         } catch (e: Exception) {
             Result.failure(Exception(e.localizedMessage ?: "Proses unduhan dihentikan."))
+        }
+    }
+
+    fun hideFromHistoryOnly(file: File) {
+        val current = prefs.getStringSet(KEY_HIDDEN_PATHS, emptySet())?.toMutableSet() ?: mutableSetOf()
+        current.add(file.absolutePath)
+        prefs.edit().putStringSet(KEY_HIDDEN_PATHS, current).apply()
+    }
+
+    fun deleteFileAndHistory(file: File) {
+        hideFromHistoryOnly(file)
+        if (file.exists()) {
+            val path = file.absolutePath
+            file.delete()
+            MediaScannerConnection.scanFile(context, arrayOf(path), null, null)
+        }
+    }
+
+    private fun unhideHistoryPath(path: String) {
+        val current = prefs.getStringSet(KEY_HIDDEN_PATHS, emptySet())?.toMutableSet() ?: return
+        if (current.remove(path)) {
+            prefs.edit().putStringSet(KEY_HIDDEN_PATHS, current).apply()
         }
     }
 
@@ -185,9 +238,21 @@ class VideoRepository(private val context: Context) {
         val dir = resolveStorageDirectory(storageSubPath)
         if (!dir.exists()) return emptyList()
 
+        val hiddenPaths = prefs.getStringSet(KEY_HIDDEN_PATHS, emptySet()) ?: emptySet()
         val sdf = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
+
         return dir.listFiles()
-            ?.filter { it.isFile && (it.extension.equals("mp4", true) || it.extension.equals("m4a", true) || it.extension.equals("mp3", true)) }
+            ?.filter {
+                it.isFile &&
+                    !hiddenPaths.contains(it.absolutePath) &&
+                    (
+                        it.extension.equals("mp4", true) ||
+                        it.extension.equals("mkv", true) ||
+                        it.extension.equals("webm", true) ||
+                        it.extension.equals("m4a", true) ||
+                        it.extension.equals("mp3", true)
+                    )
+            }
             ?.sortedByDescending { it.lastModified() }
             ?.map { file ->
                 val sizeMb = file.length() / (1024.0 * 1024.0)
