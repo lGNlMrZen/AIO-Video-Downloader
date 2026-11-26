@@ -250,9 +250,11 @@ fun HomeScreen(
     var selectedQualityIndex by remember { mutableIntStateOf(0) }
 
     val qualityMeta = listOf(
-        Pair("Video", "FHD"),
-        Pair("Cepat", "HD"),
-        Pair("Hemat kuota", "SD"),
+        Pair("Ultra HD", "2160p"),
+        Pair("Quad HD", "1440p"),
+        Pair("Full HD", "1080p"),
+        Pair("Cepat", "720p"),
+        Pair("Hemat kuota", "480p"),
         Pair("Suara jernih", "Audio")
     )
 
@@ -828,6 +830,7 @@ fun FilesHistoryScreen(viewModel: DownloaderViewModel) {
     val colors = LocalAppColors.current
     val context = LocalContext.current
     val files by viewModel.downloadedFiles.collectAsState()
+    var filePendingDelete by remember { mutableStateOf<RealDownloadedFile?>(null) }
 
     LazyColumn(
         modifier = Modifier
@@ -883,13 +886,13 @@ fun FilesHistoryScreen(viewModel: DownloaderViewModel) {
                         modifier = Modifier
                             .size(46.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(if (item.format == "M4A") Color(0xFFFEF3C7) else Color(0xFFDBEAFE)),
+                            .background(if (item.format == "M4A" || item.format == "MP3") Color(0xFFFEF3C7) else Color(0xFFDBEAFE)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = if (item.format == "M4A") Icons.Filled.Audiotrack else Icons.Filled.Movie,
+                            imageVector = if (item.format == "M4A" || item.format == "MP3") Icons.Filled.Audiotrack else Icons.Filled.Movie,
                             contentDescription = null,
-                            tint = if (item.format == "M4A") WarningAmber else PrimaryBlue,
+                            tint = if (item.format == "M4A" || item.format == "MP3") WarningAmber else PrimaryBlue,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -927,10 +930,10 @@ fun FilesHistoryScreen(viewModel: DownloaderViewModel) {
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Hapus", color = DangerRed) },
+                                text = { Text("Hapus...", color = DangerRed) },
                                 onClick = {
                                     showMenu = false
-                                    viewModel.deleteFile(item.file)
+                                    filePendingDelete = item
                                 }
                             )
                         }
@@ -939,12 +942,82 @@ fun FilesHistoryScreen(viewModel: DownloaderViewModel) {
             }
         }
     }
+
+    filePendingDelete?.let { target ->
+        AlertDialog(
+            onDismissRequest = { filePendingDelete = null },
+            containerColor = colors.surface,
+            title = {
+                Text(
+                    text = "Hapus Item Unduhan?",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = colors.textPrimary
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = target.title,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        color = colors.textPrimary
+                    )
+                    Text(
+                        text = "Pilih apakah ingin menghapus catatan histori saja atau menghapus file media secara permanen dari penyimpanan.",
+                        fontSize = 12.sp,
+                        color = colors.textSecondary
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.removeHistoryOnly(target.file)
+                            Toast.makeText(context, "Dihapus dari histori (file tetap tersimpan)", Toast.LENGTH_SHORT).show()
+                            filePendingDelete = null
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, PrimaryBlue),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Outlined.HistoryToggleOff, contentDescription = null, tint = PrimaryBlue, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Hapus Histori Saja", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = PrimaryBlue)
+                    }
+
+                    Button(
+                        onClick = {
+                            viewModel.deleteFileAndHistory(target.file)
+                            Toast.makeText(context, "Histori & file berhasil dihapus", Toast.LENGTH_SHORT).show()
+                            filePendingDelete = null
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Filled.DeleteForever, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Hapus Histori & File", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { filePendingDelete = null }) {
+                    Text("Batal", color = colors.textSecondary)
+                }
+            }
+        )
+    }
 }
 
 private fun openMediaFile(context: Context, file: File) {
     try {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-        val mime = if (file.extension.equals("m4a", true)) "audio/*" else "video/*"
+        val mime = if (file.extension.equals("m4a", true) || file.extension.equals("mp3", true)) "audio/*" else "video/*"
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, mime)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -958,7 +1031,7 @@ private fun openMediaFile(context: Context, file: File) {
 private fun shareMediaFile(context: Context, file: File) {
     try {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-        val mime = if (file.extension.equals("m4a", true)) "audio/*" else "video/*"
+        val mime = if (file.extension.equals("m4a", true) || file.extension.equals("mp3", true)) "audio/*" else "video/*"
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = mime
             putExtra(Intent.EXTRA_STREAM, uri)
@@ -1138,7 +1211,7 @@ fun AccountSettingsScreen(
                         Text("Versi Aplikasi", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
                         Surface(shape = RoundedCornerShape(8.dp), color = colors.surfaceSubtle) {
                             Text(
-                                text = "v1.0.0 (yt-dlp Native)",
+                                text = "v1.0.2 (yt-dlp Native)",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.textSecondary,
@@ -1343,10 +1416,8 @@ fun DonateDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
-    // Ganti dengan link Saweria / Trakteer kamu
     val donateUrl = "https://saweria.co/zeinatsu"
-    // Ganti dengan nomor DANA kamu
-    val danaNumber = "082258498837"
+    val danaNumber = "https://saweria.co/zeinatsu"
 
     AlertDialog(
         onDismissRequest = onDismiss,
